@@ -1,0 +1,95 @@
+# ===========================================
+# PROCONNECT DOCKER COMPOSE
+# Development & Production Setup
+# ===========================================
+
+version: '3.8'
+
+services:
+  # Main Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proconnect-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - MONGODB_URI=mongodb://mongo:27017/proconnect
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - proconnect-network
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MongoDB Database
+  mongo:
+    image: mongo:7.0
+    container_name: proconnect-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    networks:
+      - proconnect-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: proconnect-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - proconnect-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Coturn TURN Server (for WebRTC in production)
+  coturn:
+    image: coturn/coturn:latest
+    container_name: proconnect-turn
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49152-65535:49152-65535/udp"
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    networks:
+      - proconnect-network
+
+networks:
+  proconnect-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  mongo-config:
+  redis-data:
