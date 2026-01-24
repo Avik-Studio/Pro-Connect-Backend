@@ -194,6 +194,14 @@ export const appConfig = {
     turnCredential: env.TURN_CREDENTIAL,
   },
 
+  // TURN Server (for backward compatibility)
+  turn: {
+    url: env.TURN_SERVER,
+    port: 3478,
+    tlsPort: 5349,
+    secret: env.TURN_CREDENTIAL || 'default-secret',
+  },
+
   // CORS
   cors: {
     origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()),

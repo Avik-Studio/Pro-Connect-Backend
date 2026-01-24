@@ -3,9 +3,10 @@
 // WebRTC signaling server utilities
 // ===========================================
 
-import { redisClient } from '../config/redis';
+import { redis } from '../config/redis';
 import { logger } from '../utils/logger';
 import { appConfig } from '../config';
+import crypto from 'crypto';
 
 // ===========================================
 // TURN/STUN SERVER CONFIGURATION
@@ -87,6 +88,27 @@ export const generateTURNCredentials = async (
 };
 
 // ===========================================
+// WEBRTC TYPE DEFINITIONS
+// ===========================================
+
+// WebRTC type definitions for server-side use
+export interface RTCSessionDescriptionInit {
+  type: 'offer' | 'answer' | 'pranswer' | 'rollback';
+  sdp?: string;
+}
+
+export interface RTCIceCandidateInit {
+  candidate?: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+}
+
+export interface MediaTrackConstraints {
+  [key: string]: any;
+}
+
+// ===========================================
 // CALL STATE MANAGEMENT
 // ===========================================
 
@@ -109,7 +131,7 @@ const CALL_STATE_TTL = 300; // 5 minutes
  */
 export const saveCallState = async (state: CallState): Promise<void> => {
   const key = `call:state:${state.callId}`;
-  await redisClient.setex(
+  await redis.setex(
     key,
     CALL_STATE_TTL,
     JSON.stringify({
@@ -126,7 +148,7 @@ export const saveCallState = async (state: CallState): Promise<void> => {
  */
 export const getCallState = async (callId: string): Promise<CallState | null> => {
   const key = `call:state:${callId}`;
-  const data = await redisClient.get(key);
+  const data = await redis.get(key);
   
   if (!data) return null;
   
@@ -157,7 +179,7 @@ export const updateCallState = async (
  */
 export const deleteCallState = async (callId: string): Promise<void> => {
   const key = `call:state:${callId}`;
-  await redisClient.del(key);
+  await redis.del(key);
 };
 
 // ===========================================
