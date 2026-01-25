@@ -7,6 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { chatService } from '../services';
 import { AuthenticatedRequest } from '../types';
 import { sendSuccess, sendCreated } from '../utils/apiResponse';
+import { emitToConversation } from '../socket';
 
 /**
  * Get all conversations for current user
@@ -159,6 +160,14 @@ export const sendMessage = async (
 
     console.log('✅ Message sent. ID:', message._id);
 
+    // Emit real-time event to all users in the conversation
+    emitToConversation(id, 'new-message', {
+      message,
+      conversationId: id
+    });
+
+    console.log('📡 Real-time event emitted to conversation:', id);
+
     sendCreated(res, 'Message sent successfully', { message });
   } catch (error) {
     console.error('❌ [CHAT] Send message error:', (error as Error).message);
@@ -184,6 +193,15 @@ export const markAsSeen = async (
     await chatService.markAsSeen(id, req.userId!);
 
     console.log('✅ Messages marked as seen');
+
+    // Emit real-time event to notify other users
+    emitToConversation(id, 'messages-seen', {
+      conversationId: id,
+      userId: req.userId,
+      seenAt: new Date()
+    });
+
+    console.log('📡 Real-time seen event emitted');
 
     sendSuccess(res, 'Messages marked as seen');
   } catch (error) {
@@ -213,6 +231,16 @@ export const deleteMessage = async (
 
     console.log('✅ Message deleted');
 
+    // Emit real-time event
+    if (message.chatId) {
+      emitToConversation(message.chatId.toString(), 'message-deleted', {
+        messageId: id,
+        conversationId: message.chatId.toString(),
+        deleteForEveryone
+      });
+      console.log('📡 Real-time delete event emitted');
+    }
+
     sendSuccess(res, 'Message deleted successfully', { message });
   } catch (error) {
     console.error('❌ [CHAT] Delete message error:', (error as Error).message);
@@ -240,6 +268,15 @@ export const editMessage = async (
     const message = await chatService.editMessage(id, req.userId!, content);
 
     console.log('✅ Message edited');
+
+    // Emit real-time event
+    if (message.chatId) {
+      emitToConversation(message.chatId.toString(), 'message-updated', {
+        message,
+        conversationId: message.chatId.toString()
+      });
+      console.log('📡 Real-time edit event emitted');
+    }
 
     sendSuccess(res, 'Message edited successfully', { message });
   } catch (error) {

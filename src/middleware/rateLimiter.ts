@@ -135,7 +135,7 @@ export const apiLimiter = createRateLimiter({
  */
 export const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: appConfig.isDevelopment ? 1000 : 10, // Relaxed limit for development
   keyPrefix: `${RedisKeys.RATE_LIMIT}auth:`,
   message: 'Too many authentication attempts, please try again later',
 });
