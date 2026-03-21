@@ -25,6 +25,7 @@ const envSchema = z.object({
   REDIS_USERNAME: z.string().default('default'),
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.string().default('0'),
+  REDIS_TLS: z.string().default('false'),
 
   // JWT
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT access secret must be at least 32 characters'),
@@ -127,6 +128,7 @@ export const appConfig = {
     username: env.REDIS_USERNAME,
     password: env.REDIS_PASSWORD || undefined,
     db: parseInt(env.REDIS_DB, 10),
+    tls: env.REDIS_TLS === 'true',
   },
 
   // JWT

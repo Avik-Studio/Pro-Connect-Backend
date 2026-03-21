@@ -110,7 +110,7 @@ const handleConnection = async (socket: Socket) => {
       // Verify user is participant
       const conversation = await Conversation.findOne({
         _id: conversationId,
-        'participants.user': userId,
+        participants: userId,
       });
 
       if (conversation) {
@@ -143,7 +143,10 @@ const handleConnection = async (socket: Socket) => {
       );
 
       // Emit to all participants in the conversation
-      io.to(`conversation:${conversationId}`).emit('new-message', message);
+      io.to(`conversation:${conversationId}`).emit('new-message', {
+        message,
+        conversationId,
+      });
 
       // Send push notifications to offline participants
       const conversation = await Conversation.findById(conversationId);
@@ -470,7 +473,9 @@ const broadcastPresence = async (userId: string, isOnline: boolean): Promise<voi
 
 const setupRedisPubSub = (): void => {
   // Subscribe to channels
-  redisSub.subscribe('chat:message', 'call:signal', 'presence:update');
+  redisSub.subscribe('chat:message', 'call:signal', 'presence:update').catch((err) => {
+    logger.error({ err }, 'Redis pub/sub subscription failed');
+  });
 
   redisSub.on('message', (channel, message) => {
     try {
@@ -494,7 +499,10 @@ const setupRedisPubSub = (): void => {
 };
 
 const handleDistributedMessage = (data: any): void => {
-  io.to(`conversation:${data.conversationId}`).emit('new-message', data.message);
+  io.to(`conversation:${data.conversationId}`).emit('new-message', {
+    message: data.message,
+    conversationId: data.conversationId,
+  });
 };
 
 const handleDistributedCallSignal = (data: any): void => {

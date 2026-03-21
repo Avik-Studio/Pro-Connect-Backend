@@ -15,6 +15,7 @@ const createRedisClient = (): Redis => {
     username: appConfig.redis.username,
     password: appConfig.redis.password,
     db: appConfig.redis.db,
+    tls: appConfig.redis.tls ? { rejectUnauthorized: false } : undefined,
     retryStrategy: (times: number) => {
       if (times > 10) {
         logger.error('Redis connection failed after 10 retries');
@@ -39,7 +40,7 @@ const createRedisClient = (): Redis => {
   });
 
   client.on('error', (err) => {
-    logger.error('Redis client error:', err);
+    logger.error({ err }, 'Redis client error');
   });
 
   client.on('close', () => {

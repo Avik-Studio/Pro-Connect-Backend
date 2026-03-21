@@ -204,7 +204,7 @@ const gracefulShutdown = async (signal: string) => {
     try {
       // Close database connection
       const mongoose = await import('mongoose');
-      await mongoose.connection.close();
+      await mongoose.default.connection.close();
       logger.info('Database connection closed');
 
       // Close Redis connection
@@ -217,7 +217,7 @@ const gracefulShutdown = async (signal: string) => {
 
       process.exit(0);
     } catch (error) {
-      logger.error('Error during shutdown:', error);
+      logger.error({ err: error }, 'Error during shutdown');
       process.exit(1);
     }
   });
@@ -237,12 +237,12 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // ===========================================
 
 process.on('uncaughtException', (error: Error) => {
-  logger.error('Uncaught Exception:', error);
+  logger.error({ err: error }, 'Uncaught Exception');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason: any) => {
-  logger.error('Unhandled Rejection:', reason);
+  logger.error({ err: reason }, 'Unhandled Rejection');
   process.exit(1);
 });
 
@@ -267,6 +267,15 @@ const startServer = async (): Promise<void> => {
     logger.info('Socket.IO initialized');
 
     // Start HTTP server
+    server.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${appConfig.port} is already in use`);
+      } else {
+        logger.error({ err: error }, 'Server error');
+      }
+      process.exit(1);
+    });
+
     server.listen(appConfig.port, () => {
       logger.info(`
 ╔════════════════════════════════════════════════════════════╗
