@@ -125,7 +125,9 @@ export const acceptCall = async (
 
     // Notify caller that the call was accepted
     if (call.caller) {
-      const callerId = call.caller.toString();
+      const callerId = typeof call.caller === 'object' && call.caller._id
+        ? call.caller._id.toString()
+        : call.caller.toString();
       if (callerId) {
         emitToUser(callerId, 'call-accepted', { callId, acceptedBy: req.userId });
       }
@@ -161,7 +163,9 @@ export const rejectCall = async (
 
     // Notify caller that the call was rejected
     if (call.caller) {
-      const callerId = call.caller.toString();
+      const callerId = typeof call.caller === 'object' && call.caller._id
+        ? call.caller._id.toString()
+        : call.caller.toString();
       if (callerId) {
         emitToUser(callerId, 'call-rejected', { callId, rejectedBy: req.userId, reason });
       }
@@ -198,11 +202,22 @@ export const endCall = async (
     // Notify all participants that the call ended
     if (call.participants) {
       for (const participant of call.participants) {
-        const pid = participant.userId?.toString();
+        const pid = typeof participant.userId === 'object' && participant.userId._id
+          ? participant.userId._id.toString()
+          : participant.userId?.toString();
         if (pid && pid !== req.userId) {
           emitToUser(pid, 'call-ended', { callId, endedBy: req.userId, reason });
         }
       }
+    }
+
+    // Also notify the caller if someone else ended the call
+    // (caller is not in the participants array)
+    const callerId = typeof call.caller === 'object' && call.caller._id
+      ? call.caller._id.toString()
+      : call.caller?.toString();
+    if (callerId && callerId !== req.userId) {
+      emitToUser(callerId, 'call-ended', { callId, endedBy: req.userId, reason });
     }
 
     sendSuccess(res, 'Call ended', { call });

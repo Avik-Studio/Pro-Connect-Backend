@@ -268,20 +268,41 @@ const handleConnection = async (socket: Socket) => {
     }
   });
 
+  // Safely extract the user ID string from a field that may be
+  // a plain ObjectId OR a populated Mongoose document.
+  const extractId = (field: any): string => {
+    if (!field) return '';
+    if (typeof field === 'string') return field;
+    if (field._id) return field._id.toString();
+    return field.toString();
+  };
+
+  // Helper: emit a WebRTC signal to all call members except the sender.
+  // call.participants only stores receivers; call.caller is stored separately.
+  const emitToCallPeers = (call: any, event: string, payload: any) => {
+    const callerId = extractId(call.caller);
+    // Send to caller if current user is not the caller
+    if (callerId && callerId !== userId) {
+      io.to(`user:${callerId}`).emit(event as any, payload);
+    }
+    // Send to every participant who is not the current user
+    for (const participant of call.participants) {
+      const pid = extractId(participant.userId);
+      if (pid && pid !== userId) {
+        io.to(`user:${pid}`).emit(event as any, payload);
+      }
+    }
+  };
+
   // WebRTC signaling: offer (supports both 'call-offer' and 'webrtc-offer')
   const handleWebRTCOffer = async (data: any) => {
     const { callId, targetUserId, offer } = data;
     if (targetUserId) {
       io.to(`user:${targetUserId}`).emit('webrtc-offer', { callId, offer });
     } else {
-      // If no targetUserId, find the other participant from the call
       const call = await callService.getCallById(callId);
       if (call) {
-        for (const participant of call.participants) {
-          if (participant.userId.toString() !== userId) {
-            io.to(`user:${participant.userId.toString()}`).emit('webrtc-offer', { callId, offer });
-          }
-        }
+        emitToCallPeers(call, 'webrtc-offer', { callId, offer });
       }
     }
   };
@@ -296,11 +317,7 @@ const handleConnection = async (socket: Socket) => {
     } else {
       const call = await callService.getCallById(callId);
       if (call) {
-        for (const participant of call.participants) {
-          if (participant.userId.toString() !== userId) {
-            io.to(`user:${participant.userId.toString()}`).emit('webrtc-answer', { callId, answer });
-          }
-        }
+        emitToCallPeers(call, 'webrtc-answer', { callId, answer });
       }
     }
   };
@@ -315,11 +332,7 @@ const handleConnection = async (socket: Socket) => {
     } else {
       const call = await callService.getCallById(callId);
       if (call) {
-        for (const participant of call.participants) {
-          if (participant.userId.toString() !== userId) {
-            io.to(`user:${participant.userId.toString()}`).emit('webrtc-ice-candidate', { callId, candidate });
-          }
-        }
+        emitToCallPeers(call, 'webrtc-ice-candidate', { callId, candidate });
       }
     }
   };
@@ -333,10 +346,13 @@ const handleConnection = async (socket: Socket) => {
       const call = await callService.acceptCall(callId, userId);
 
       // Notify caller
-      io.to(`user:${call.caller.toString()}`).emit('call-accepted', {
-        callId,
-        acceptedBy: userId,
-      });
+      const callerId = extractId(call.caller);
+      if (callerId) {
+        io.to(`user:${callerId}`).emit('call-accepted', {
+          callId,
+          acceptedBy: userId,
+        });
+      }
 
       callback?.({ success: true, call });
     } catch (error) {
@@ -352,11 +368,14 @@ const handleConnection = async (socket: Socket) => {
       const call = await callService.rejectCall(callId, userId, reason);
 
       // Notify caller
-      io.to(`user:${call.caller.toString()}`).emit('call-rejected', {
-        callId,
-        rejectedBy: userId,
-        reason,
-      });
+      const callerId = extractId(call.caller);
+      if (callerId) {
+        io.to(`user:${callerId}`).emit('call-rejected', {
+          callId,
+          rejectedBy: userId,
+          reason,
+        });
+      }
 
       callback?.({ success: true });
     } catch (error) {
@@ -371,14 +390,25 @@ const handleConnection = async (socket: Socket) => {
       const { callId, reason } = data;
       const call = await callService.endCall(callId, userId, reason);
 
+      const endPayload = {
+        callId,
+        endedBy: userId,
+        reason,
+        duration: call.duration,
+      };
+
       // Notify all participants
       for (const participant of call.participants) {
-        io.to(`user:${participant.userId.toString()}`).emit('call-ended', {
-          callId,
-          endedBy: userId,
-          reason,
-          duration: call.duration,
-        });
+        const pid = extractId(participant.userId);
+        if (pid && pid !== userId) {
+          io.to(`user:${pid}`).emit('call-ended', endPayload);
+        }
+      }
+
+      // Also notify the caller if someone else ended the call
+      const callerId = extractId(call.caller);
+      if (callerId && callerId !== userId) {
+        io.to(`user:${callerId}`).emit('call-ended', endPayload);
       }
 
       callback?.({ success: true });
@@ -450,9 +480,37 @@ const handleConnection = async (socket: Socket) => {
     if (otherSockets.length === 0) {
       // User completely offline
       await broadcastPresence(userId, false);
-      
+
       // Update last seen
       await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
+
+      // End any active call the user was in
+      try {
+        const activeCall = await callService.getActiveCall(userId);
+        if (activeCall) {
+          await callService.endCall(activeCall.callId, userId, 'disconnected');
+          const callerId = extractId(activeCall.caller);
+          const endPayload = {
+            callId: activeCall.callId,
+            endedBy: userId,
+            reason: 'disconnected',
+            duration: activeCall.duration,
+          };
+          // Notify caller
+          if (callerId && callerId !== userId) {
+            io.to(`user:${callerId}`).emit('call-ended', endPayload);
+          }
+          // Notify remaining participants
+          for (const participant of activeCall.participants) {
+            const pid = extractId(participant.userId);
+            if (pid && pid !== userId) {
+              io.to(`user:${pid}`).emit('call-ended', endPayload);
+            }
+          }
+        }
+      } catch (err) {
+        logger.error('Error ending call on disconnect:', err);
+      }
     }
   });
 };
