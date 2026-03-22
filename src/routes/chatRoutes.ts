@@ -25,9 +25,11 @@ const sendMessageSchema = z.object({
   messageType: z.enum(['text', 'image', 'video', 'audio', 'file', 'location', 'contact']).default('text'),
   media: z.array(z.object({
     url: z.string().url(),
-    type: z.enum(['image', 'video', 'audio', 'file']),
+    publicId: z.string().optional(),
+    type: z.enum(['image', 'video', 'audio', 'file']).optional(),
     mimeType: z.string(),
-    size: z.number().optional(),
+    fileName: z.string().optional(),
+    fileSize: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
     duration: z.number().optional(),

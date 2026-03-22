@@ -8,6 +8,7 @@ import { chatService } from '../services';
 import { AuthenticatedRequest } from '../types';
 import { sendSuccess, sendCreated } from '../utils/apiResponse';
 import { emitToConversation } from '../socket';
+import { logger } from '../utils/logger';
 
 /**
  * Get all conversations for current user
@@ -19,9 +20,9 @@ export const getConversations = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n💬 [CHAT] GET /conversations');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Query params:', req.query);
+    logger.debug('[CHAT] GET /conversations');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug({ query: req.query }, 'Query params');
 
     const { page = '1', limit = '20' } = req.query;
     const { conversations, meta } = await chatService.getUserConversations(
@@ -30,11 +31,11 @@ export const getConversations = async (
       parseInt(limit as string, 10)
     );
 
-    console.log('✅ Retrieved', conversations.length, 'conversations');
+    logger.debug(`Retrieved ${conversations.length} conversations`);
 
     sendSuccess(res, 'Conversations retrieved successfully', { conversations }, meta);
   } catch (error) {
-    console.error('❌ [CHAT] Get conversations error:', (error as Error).message);
+    logger.error(`[CHAT] Get conversations error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -49,9 +50,9 @@ export const getOrCreatePrivateConversation = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n💬 [CHAT] POST /conversations/private');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Target user ID:', req.body.userId);
+    logger.debug('[CHAT] POST /conversations/private');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Target user ID: ${req.body.userId}`);
 
     const { userId } = req.body;
     const conversation = await chatService.getOrCreatePrivateConversation(
@@ -59,11 +60,11 @@ export const getOrCreatePrivateConversation = async (
       userId
     );
 
-    console.log('✅ Conversation retrieved/created. ID:', conversation._id);
+    logger.debug(`Conversation retrieved/created. ID: ${conversation._id}`);
 
     sendSuccess(res, 'Conversation retrieved successfully', { conversation });
   } catch (error) {
-    console.error('❌ [CHAT] Get/create conversation error:', (error as Error).message);
+    logger.error(`[CHAT] Get/create conversation error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -78,18 +79,18 @@ export const getConversation = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n💬 [CHAT] GET /conversations/:id');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
+    logger.debug('[CHAT] GET /conversations/:id');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
 
     const { id } = req.params;
     const conversation = await chatService.getConversationById(id, req.userId!);
 
-    console.log('✅ Conversation retrieved');
+    logger.debug('Conversation retrieved');
 
     sendSuccess(res, 'Conversation retrieved successfully', { conversation });
   } catch (error) {
-    console.error('❌ [CHAT] Get conversation error:', (error as Error).message);
+    logger.error(`[CHAT] Get conversation error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -104,10 +105,10 @@ export const getMessages = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📨 [CHAT] GET /conversations/:id/messages');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
-    console.log('📥 Query params:', req.query);
+    logger.debug('[CHAT] GET /conversations/:id/messages');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
+    logger.debug({ query: req.query }, 'Query params');
 
     const { id } = req.params;
     const { page = '1', limit = '50' } = req.query;
@@ -118,11 +119,11 @@ export const getMessages = async (
       parseInt(limit as string, 10)
     );
 
-    console.log('✅ Retrieved', messages.length, 'messages');
+    logger.debug(`Retrieved ${messages.length} messages`);
 
     sendSuccess(res, 'Messages retrieved successfully', { messages }, meta);
   } catch (error) {
-    console.error('❌ [CHAT] Get messages error:', (error as Error).message);
+    logger.error(`[CHAT] Get messages error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -137,28 +138,32 @@ export const sendMessage = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📤 [CHAT] POST /conversations/:id/messages');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
-    console.log('📥 Message data:', {
+    logger.debug('[CHAT] POST /conversations/:id/messages');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
+    logger.debug({
       content: req.body.content?.substring(0, 50) + (req.body.content?.length > 50 ? '...' : ''),
       messageType: req.body.messageType,
       hasMedia: !!req.body.media?.length,
       replyTo: req.body.replyTo,
-    });
+    }, 'Message data');
 
     const { id } = req.params;
     const { content, messageType, media, replyTo } = req.body;
+
+    // Route validation accepts media as array; Mongoose schema stores single object
+    const mediaObj = Array.isArray(media) && media.length > 0 ? media[0] : media;
+
     const message = await chatService.sendMessage(
       req.userId!,
       id,
       content,
       messageType,
-      media,
+      mediaObj,
       replyTo
     );
 
-    console.log('✅ Message sent. ID:', message._id);
+    logger.debug(`Message sent. ID: ${message._id}`);
 
     // Emit real-time event to all users in the conversation
     emitToConversation(id, 'new-message', {
@@ -166,11 +171,11 @@ export const sendMessage = async (
       conversationId: id
     });
 
-    console.log('📡 Real-time event emitted to conversation:', id);
+    logger.debug(`Real-time event emitted to conversation: ${id}`);
 
     sendCreated(res, 'Message sent successfully', { message });
   } catch (error) {
-    console.error('❌ [CHAT] Send message error:', (error as Error).message);
+    logger.error(`[CHAT] Send message error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -185,14 +190,14 @@ export const markAsSeen = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n👁️ [CHAT] POST /conversations/:id/seen');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
+    logger.debug('[CHAT] POST /conversations/:id/seen');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
 
     const { id } = req.params;
     await chatService.markAsSeen(id, req.userId!);
 
-    console.log('✅ Messages marked as seen');
+    logger.debug('Messages marked as seen');
 
     // Emit real-time event to notify other users
     emitToConversation(id, 'messages-seen', {
@@ -201,11 +206,11 @@ export const markAsSeen = async (
       seenAt: new Date()
     });
 
-    console.log('📡 Real-time seen event emitted');
+    logger.debug('Real-time seen event emitted');
 
     sendSuccess(res, 'Messages marked as seen');
   } catch (error) {
-    console.error('❌ [CHAT] Mark as seen error:', (error as Error).message);
+    logger.error(`[CHAT] Mark as seen error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -220,16 +225,16 @@ export const deleteMessage = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🗑️ [CHAT] DELETE /messages/:id');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Message ID:', req.params.id);
-    console.log('📥 Delete for everyone:', req.body.deleteForEveryone);
+    logger.debug('[CHAT] DELETE /messages/:id');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Message ID: ${req.params.id}`);
+    logger.debug(`Delete for everyone: ${req.body.deleteForEveryone}`);
 
     const { id } = req.params;
     const { deleteForEveryone = false } = req.body;
     const message = await chatService.deleteMessage(id, req.userId!, deleteForEveryone);
 
-    console.log('✅ Message deleted');
+    logger.debug('Message deleted');
 
     // Emit real-time event
     if (message.chatId) {
@@ -238,12 +243,12 @@ export const deleteMessage = async (
         conversationId: message.chatId.toString(),
         deleteForEveryone
       });
-      console.log('📡 Real-time delete event emitted');
+      logger.debug('Real-time delete event emitted');
     }
 
     sendSuccess(res, 'Message deleted successfully', { message });
   } catch (error) {
-    console.error('❌ [CHAT] Delete message error:', (error as Error).message);
+    logger.error(`[CHAT] Delete message error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -258,16 +263,16 @@ export const editMessage = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n✏️ [CHAT] PATCH /messages/:id');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Message ID:', req.params.id);
-    console.log('📥 New content:', req.body.content?.substring(0, 50) + '...');
+    logger.debug('[CHAT] PATCH /messages/:id');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Message ID: ${req.params.id}`);
+    logger.debug(`New content: ${req.body.content?.substring(0, 50)}...`);
 
     const { id } = req.params;
     const { content } = req.body;
     const message = await chatService.editMessage(id, req.userId!, content);
 
-    console.log('✅ Message edited');
+    logger.debug('Message edited');
 
     // Emit real-time event
     if (message.chatId) {
@@ -275,12 +280,12 @@ export const editMessage = async (
         message,
         conversationId: message.chatId.toString()
       });
-      console.log('📡 Real-time edit event emitted');
+      logger.debug('Real-time edit event emitted');
     }
 
     sendSuccess(res, 'Message edited successfully', { message });
   } catch (error) {
-    console.error('❌ [CHAT] Edit message error:', (error as Error).message);
+    logger.error(`[CHAT] Edit message error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -295,16 +300,16 @@ export const getUnreadCount = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🔢 [CHAT] GET /unread-count');
-    console.log('👤 User ID:', req.userId);
+    logger.debug('[CHAT] GET /unread-count');
+    logger.debug(`User ID: ${req.userId}`);
 
     const count = await chatService.getUnreadCount(req.userId!);
 
-    console.log('✅ Unread count:', count);
+    logger.debug(`Unread count: ${count}`);
 
     sendSuccess(res, 'Unread count retrieved successfully', { count });
   } catch (error) {
-    console.error('❌ [CHAT] Get unread count error:', (error as Error).message);
+    logger.error(`[CHAT] Get unread count error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -319,20 +324,20 @@ export const togglePin = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📌 [CHAT] POST /conversations/:id/pin');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
+    logger.debug('[CHAT] POST /conversations/:id/pin');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
 
     const { id } = req.params;
     const isPinned = await chatService.togglePinConversation(id, req.userId!);
 
-    console.log('✅ Conversation', isPinned ? 'pinned' : 'unpinned');
+    logger.debug(`Conversation ${isPinned ? 'pinned' : 'unpinned'}`);
 
     sendSuccess(res, isPinned ? 'Conversation pinned' : 'Conversation unpinned', {
       isPinned,
     });
   } catch (error) {
-    console.error('❌ [CHAT] Toggle pin error:', (error as Error).message);
+    logger.error(`[CHAT] Toggle pin error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -347,10 +352,10 @@ export const muteConversation = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🔇 [CHAT] POST /conversations/:id/mute');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
-    console.log('📥 Mute until:', req.body.muteUntil);
+    logger.debug('[CHAT] POST /conversations/:id/mute');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
+    logger.debug(`Mute until: ${req.body.muteUntil}`);
 
     const { id } = req.params;
     const { muteUntil } = req.body;
@@ -360,13 +365,13 @@ export const muteConversation = async (
       muteUntil ? new Date(muteUntil) : undefined
     );
 
-    console.log('✅ Conversation', mutedUntil ? 'muted until ' + mutedUntil : 'unmuted');
+    logger.debug(`Conversation ${mutedUntil ? 'muted until ' + mutedUntil : 'unmuted'}`);
 
     sendSuccess(res, mutedUntil ? 'Conversation muted' : 'Conversation unmuted', {
       mutedUntil,
     });
   } catch (error) {
-    console.error('❌ [CHAT] Mute conversation error:', (error as Error).message);
+    logger.error(`[CHAT] Mute conversation error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -381,10 +386,10 @@ export const searchMessages = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🔍 [CHAT] GET /conversations/:id/search');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Conversation ID:', req.params.id);
-    console.log('📥 Search query:', req.query.q);
+    logger.debug('[CHAT] GET /conversations/:id/search');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Conversation ID: ${req.params.id}`);
+    logger.debug(`Search query: ${req.query.q}`);
 
     const { id } = req.params;
     const { q, page = '1', limit = '20' } = req.query;
@@ -396,11 +401,11 @@ export const searchMessages = async (
       parseInt(limit as string, 10)
     );
 
-    console.log('✅ Found', messages.length, 'messages matching query');
+    logger.debug(`Found ${messages.length} messages matching query`);
 
     sendSuccess(res, 'Messages found', { messages }, meta);
   } catch (error) {
-    console.error('❌ [CHAT] Search messages error:', (error as Error).message);
+    logger.error(`[CHAT] Search messages error: ${(error as Error).message}`);
     next(error);
   }
 };

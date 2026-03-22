@@ -413,8 +413,8 @@ export interface ServerToClientEvents {
   
   // Typing events
   'user-typing': (data: { conversationId: string; userId: string; username: string }) => void;
-  'user-stop-typing': (data: { conversationId: string; userId: string }) => void;
-  
+  'user-stopped-typing': (data: { conversationId: string; userId: string }) => void;
+
   // Call events
   'incoming-call': (data: { call: any; caller: { id: string; username: string } }) => void;
   'call-offer': (data: { callId: string; fromUserId: string; offer: RTCSessionDescriptionInit }) => void;
@@ -424,6 +424,11 @@ export interface ServerToClientEvents {
   'call-rejected': (data: { callId: string; rejectedBy: string; reason?: string }) => void;
   'call-ended': (data: { callId: string; endedBy: string; reason?: string; duration?: number }) => void;
   'media-toggled': (data: { userId: string; mediaType: 'audio' | 'video'; enabled: boolean }) => void;
+
+  // WebRTC signaling events (alternative names used by frontend)
+  'webrtc-offer': (data: { callId: string; offer: RTCSessionDescriptionInit }) => void;
+  'webrtc-answer': (data: { callId: string; answer: RTCSessionDescriptionInit }) => void;
+  'webrtc-ice-candidate': (data: { callId: string; candidate: RTCIceCandidateInit }) => void;
   
   // Presence events
   'presence-update': (data: Record<string, { isOnline: boolean; lastSeen?: string | null }>) => void;

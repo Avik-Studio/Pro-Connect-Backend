@@ -60,13 +60,12 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
+      ...appConfig.cors.origin,
       appConfig.frontend.url,
-      'http://localhost:3000',
-      'http://localhost:5173',
     ];
-    
+
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else if (appConfig.nodeEnv === 'development') {
@@ -75,7 +74,7 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
+  credentials: appConfig.cors.credentials,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
@@ -139,7 +138,7 @@ app.get('/api-docs.json', (req: Request, res: Response) => {
   res.send(swaggerSpec);
 });
 
-console.log('📚 Swagger API Documentation available at: http://localhost:' + appConfig.port + '/api-docs');
+logger.info(`Swagger API Documentation available at: http://localhost:${appConfig.port}/api-docs`);
 
 app.get('/ready', async (req: Request, res: Response) => {
   try {

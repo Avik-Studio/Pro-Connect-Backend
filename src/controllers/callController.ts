@@ -7,6 +7,8 @@ import { Request, Response, NextFunction } from 'express';
 import { callService } from '../services';
 import { AuthenticatedRequest } from '../types';
 import { sendSuccess, sendCreated } from '../utils/apiResponse';
+import { emitToUser } from '../socket';
+import { logger } from '../utils/logger';
 
 /**
  * Initiate a new call
@@ -18,9 +20,9 @@ export const initiateCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📞 [CALL] POST / - Initiate call');
-    console.log('👤 Caller ID:', req.userId);
-    console.log('📥 Call data:', {
+    logger.debug('[CALL] POST / - Initiate call');
+    logger.debug('Caller ID: %s', req.userId);
+    logger.debug('Call data: %o', {
       receiverId: req.body.receiverId,
       groupId: req.body.groupId,
       callType: req.body.callType,
@@ -36,13 +38,18 @@ export const initiateCall = async (
       groupId
     );
 
-    console.log('✅ Call initiated. ID:', call._id);
-    console.log('📞 Call type:', callType);
-    console.log('🎯 Receivers:', receiverIds.length || 'Group call');
-    
+    logger.debug('Call initiated. ID: %s', call._id);
+    logger.debug('Call type: %s', callType);
+    logger.debug('Receivers: %s', receiverIds.length || 'Group call');
+
+    // Notify receiver(s) via socket
+    if (receiverId) {
+      emitToUser(receiverId, 'incoming-call', { call });
+    }
+
     sendCreated(res, 'Call initiated successfully', { call });
   } catch (error) {
-    console.error('❌ [CALL] Initiate call error:', (error as Error).message);
+    logger.error('[CALL] Initiate call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -57,16 +64,16 @@ export const getActiveCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📞 [CALL] GET /active');
-    console.log('👤 User ID:', req.userId);
+    logger.debug('[CALL] GET /active');
+    logger.debug('User ID: %s', req.userId);
 
     const call = await callService.getActiveCall(req.userId!);
 
-    console.log('✅ Active call:', call ? `ID: ${call._id}` : 'None');
+    logger.debug('Active call: %s', call ? `ID: ${call._id}` : 'None');
 
     sendSuccess(res, call ? 'Active call found' : 'No active call', { call });
   } catch (error) {
-    console.error('❌ [CALL] Get active call error:', (error as Error).message);
+    logger.error('[CALL] Get active call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -81,18 +88,18 @@ export const getCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📞 [CALL] GET /:callId');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Call ID:', req.params.callId);
+    logger.debug('[CALL] GET /:callId');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Call ID: %s', req.params.callId);
 
     const { callId } = req.params;
     const call = await callService.getCallById(callId);
 
-    console.log('✅ Call retrieved');
+    logger.debug('Call retrieved');
 
     sendSuccess(res, 'Call retrieved successfully', { call });
   } catch (error) {
-    console.error('❌ [CALL] Get call error:', (error as Error).message);
+    logger.error('[CALL] Get call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -107,18 +114,26 @@ export const acceptCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n✅ [CALL] POST /:callId/accept');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Call ID:', req.params.callId);
+    logger.debug('[CALL] POST /:callId/accept');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Call ID: %s', req.params.callId);
 
     const { callId } = req.params;
     const call = await callService.acceptCall(callId, req.userId!);
 
-    console.log('✅ Call accepted');
+    logger.debug('Call accepted');
+
+    // Notify caller that the call was accepted
+    if (call.caller) {
+      const callerId = call.caller.toString();
+      if (callerId) {
+        emitToUser(callerId, 'call-accepted', { callId, acceptedBy: req.userId });
+      }
+    }
 
     sendSuccess(res, 'Call accepted', { call });
   } catch (error) {
-    console.error('❌ [CALL] Accept call error:', (error as Error).message);
+    logger.error('[CALL] Accept call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -133,20 +148,28 @@ export const rejectCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n❌ [CALL] POST /:callId/reject');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Call ID:', req.params.callId);
-    console.log('📥 Reason:', req.body.reason || 'Not specified');
+    logger.debug('[CALL] POST /:callId/reject');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Call ID: %s', req.params.callId);
+    logger.debug('Reason: %s', req.body.reason || 'Not specified');
 
     const { callId } = req.params;
     const { reason } = req.body;
     const call = await callService.rejectCall(callId, req.userId!, reason);
 
-    console.log('✅ Call rejected');
+    logger.debug('Call rejected');
+
+    // Notify caller that the call was rejected
+    if (call.caller) {
+      const callerId = call.caller.toString();
+      if (callerId) {
+        emitToUser(callerId, 'call-rejected', { callId, rejectedBy: req.userId, reason });
+      }
+    }
 
     sendSuccess(res, 'Call rejected', { call });
   } catch (error) {
-    console.error('❌ [CALL] Reject call error:', (error as Error).message);
+    logger.error('[CALL] Reject call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -161,20 +184,30 @@ export const endCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🔚 [CALL] POST /:callId/end');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Call ID:', req.params.callId);
-    console.log('📥 End reason:', req.body.reason || 'normal');
+    logger.debug('[CALL] POST /:callId/end');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Call ID: %s', req.params.callId);
+    logger.debug('End reason: %s', req.body.reason || 'normal');
 
     const { callId } = req.params;
     const { reason } = req.body;
     const call = await callService.endCall(callId, req.userId!, reason);
 
-    console.log('✅ Call ended');
+    logger.debug('Call ended');
+
+    // Notify all participants that the call ended
+    if (call.participants) {
+      for (const participant of call.participants) {
+        const pid = participant.userId?.toString();
+        if (pid && pid !== req.userId) {
+          emitToUser(pid, 'call-ended', { callId, endedBy: req.userId, reason });
+        }
+      }
+    }
 
     sendSuccess(res, 'Call ended', { call });
   } catch (error) {
-    console.error('❌ [CALL] End call error:', (error as Error).message);
+    logger.error('[CALL] End call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -189,18 +222,18 @@ export const leaveCall = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🚪 [CALL] POST /:callId/leave');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Call ID:', req.params.callId);
+    logger.debug('[CALL] POST /:callId/leave');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Call ID: %s', req.params.callId);
 
     const { callId } = req.params;
     const call = await callService.leaveCall(callId, req.userId!);
 
-    console.log('✅ Left call');
+    logger.debug('Left call');
 
     sendSuccess(res, 'Left call', { call });
   } catch (error) {
-    console.error('❌ [CALL] Leave call error:', (error as Error).message);
+    logger.error('[CALL] Leave call error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -215,9 +248,9 @@ export const getCallHistory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📋 [CALL] GET /history');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Query params:', req.query);
+    logger.debug('[CALL] GET /history');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Query params: %o', req.query);
 
     const { page = '1', limit = '20', type } = req.query;
     const { calls, meta } = await callService.getCallHistory(
@@ -227,11 +260,11 @@ export const getCallHistory = async (
       type as 'audio' | 'video' | undefined
     );
 
-    console.log('✅ Retrieved', calls.length, 'calls');
+    logger.debug('Retrieved %s calls', calls.length);
 
     sendSuccess(res, 'Call history retrieved successfully', { calls }, meta);
   } catch (error) {
-    console.error('❌ [CALL] Get call history error:', (error as Error).message);
+    logger.error('[CALL] Get call history error: %s', (error as Error).message);
     next(error);
   }
 };
@@ -246,9 +279,9 @@ export const getMissedCallsCount = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📵 [CALL] GET /missed-count');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Since:', req.query.since || 'All time');
+    logger.debug('[CALL] GET /missed-count');
+    logger.debug('User ID: %s', req.userId);
+    logger.debug('Since: %s', req.query.since || 'All time');
 
     const { since } = req.query;
     const count = await callService.getMissedCallsCount(
@@ -256,11 +289,11 @@ export const getMissedCallsCount = async (
       since ? new Date(since as string) : undefined
     );
 
-    console.log('✅ Missed calls count:', count);
+    logger.debug('Missed calls count: %s', count);
 
     sendSuccess(res, 'Missed calls count retrieved', { count });
   } catch (error) {
-    console.error('❌ [CALL] Get missed calls error:', (error as Error).message);
+    logger.error('[CALL] Get missed calls error: %s', (error as Error).message);
     next(error);
   }
 };

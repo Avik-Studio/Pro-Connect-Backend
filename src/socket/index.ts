@@ -32,13 +32,11 @@ export const initializeSocketIO = (httpServer: Server): SocketServer => {
   io = new SocketServer(httpServer, {
     cors: {
       origin: [
+        ...appConfig.cors.origin,
         appConfig.frontend.url,
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5174',
-      ],
+      ].filter((v, i, a) => a.indexOf(v) === i), // deduplicate
       methods: ['GET', 'POST'],
-      credentials: true,
+      credentials: appConfig.cors.credentials,
     },
     pingTimeout: 60000,
     pingInterval: 25000,
@@ -185,7 +183,7 @@ const handleConnection = async (socket: Socket) => {
   });
 
   socket.on('typing-stop', async (conversationId: string) => {
-    socket.to(`conversation:${conversationId}`).emit('user-stop-typing', {
+    socket.to(`conversation:${conversationId}`).emit('user-stopped-typing', {
       conversationId,
       userId,
     });
@@ -270,35 +268,63 @@ const handleConnection = async (socket: Socket) => {
     }
   });
 
-  // WebRTC signaling: offer
-  socket.on('call-offer', async (data) => {
+  // WebRTC signaling: offer (supports both 'call-offer' and 'webrtc-offer')
+  const handleWebRTCOffer = async (data: any) => {
     const { callId, targetUserId, offer } = data;
-    io.to(`user:${targetUserId}`).emit('call-offer', {
-      callId,
-      fromUserId: userId,
-      offer,
-    });
-  });
+    if (targetUserId) {
+      io.to(`user:${targetUserId}`).emit('webrtc-offer', { callId, offer });
+    } else {
+      // If no targetUserId, find the other participant from the call
+      const call = await callService.getCallById(callId);
+      if (call) {
+        for (const participant of call.participants) {
+          if (participant.userId.toString() !== userId) {
+            io.to(`user:${participant.userId.toString()}`).emit('webrtc-offer', { callId, offer });
+          }
+        }
+      }
+    }
+  };
+  socket.on('call-offer', handleWebRTCOffer);
+  socket.on('webrtc-offer', handleWebRTCOffer);
 
-  // WebRTC signaling: answer
-  socket.on('call-answer', async (data) => {
+  // WebRTC signaling: answer (supports both 'call-answer' and 'webrtc-answer')
+  const handleWebRTCAnswer = async (data: any) => {
     const { callId, targetUserId, answer } = data;
-    io.to(`user:${targetUserId}`).emit('call-answer', {
-      callId,
-      fromUserId: userId,
-      answer,
-    });
-  });
+    if (targetUserId) {
+      io.to(`user:${targetUserId}`).emit('webrtc-answer', { callId, answer });
+    } else {
+      const call = await callService.getCallById(callId);
+      if (call) {
+        for (const participant of call.participants) {
+          if (participant.userId.toString() !== userId) {
+            io.to(`user:${participant.userId.toString()}`).emit('webrtc-answer', { callId, answer });
+          }
+        }
+      }
+    }
+  };
+  socket.on('call-answer', handleWebRTCAnswer);
+  socket.on('webrtc-answer', handleWebRTCAnswer);
 
-  // WebRTC signaling: ICE candidate
-  socket.on('ice-candidate', async (data) => {
+  // WebRTC signaling: ICE candidate (supports both 'ice-candidate' and 'webrtc-ice-candidate')
+  const handleWebRTCIceCandidate = async (data: any) => {
     const { callId, targetUserId, candidate } = data;
-    io.to(`user:${targetUserId}`).emit('ice-candidate', {
-      callId,
-      fromUserId: userId,
-      candidate,
-    });
-  });
+    if (targetUserId) {
+      io.to(`user:${targetUserId}`).emit('webrtc-ice-candidate', { callId, candidate });
+    } else {
+      const call = await callService.getCallById(callId);
+      if (call) {
+        for (const participant of call.participants) {
+          if (participant.userId.toString() !== userId) {
+            io.to(`user:${participant.userId.toString()}`).emit('webrtc-ice-candidate', { callId, candidate });
+          }
+        }
+      }
+    }
+  };
+  socket.on('ice-candidate', handleWebRTCIceCandidate);
+  socket.on('webrtc-ice-candidate', handleWebRTCIceCandidate);
 
   // Accept call
   socket.on('call-accept', async (data, callback) => {

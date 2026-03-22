@@ -7,6 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { userService } from '../services';
 import { AuthenticatedRequest } from '../types';
 import { sendSuccess } from '../utils/apiResponse';
+import { logger } from '../utils/logger';
 
 /**
  * Get user profile
@@ -18,16 +19,16 @@ export const getProfile = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n👤 [USER] GET /profile');
-    console.log('👤 User ID:', req.userId);
+    logger.debug('[USER] GET /profile');
+    logger.debug(`User ID: ${req.userId}`);
 
     const user = await userService.getUserById(req.userId!);
 
-    console.log('✅ Profile retrieved for:', user?.email);
+    logger.debug(`Profile retrieved for: ${user?.email}`);
 
     sendSuccess(res, 'Profile retrieved successfully', { user });
   } catch (error) {
-    console.error('❌ [USER] Get profile error:', (error as Error).message);
+    logger.error(`[USER] Get profile error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -42,9 +43,9 @@ export const updateProfile = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n✏️ [USER] PATCH /profile');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Update data:', JSON.stringify(req.body, null, 2));
+    logger.debug('[USER] PATCH /profile');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Update data: ${JSON.stringify(req.body, null, 2)}`);
 
     const { displayName, bio, avatar, phoneNumber } = req.body;
     const user = await userService.updateProfile(req.userId!, {
@@ -54,11 +55,11 @@ export const updateProfile = async (
       phoneNumber,
     });
 
-    console.log('✅ Profile updated successfully');
+    logger.debug('Profile updated successfully');
 
     sendSuccess(res, 'Profile updated successfully', { user });
   } catch (error) {
-    console.error('❌ [USER] Update profile error:', (error as Error).message);
+    logger.error(`[USER] Update profile error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -73,17 +74,17 @@ export const updateSettings = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n⚙️ [USER] PATCH /settings');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Settings:', JSON.stringify(req.body, null, 2));
+    logger.debug('[USER] PATCH /settings');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Settings: ${JSON.stringify(req.body, null, 2)}`);
 
     const user = await userService.updateSettings(req.userId!, req.body);
 
-    console.log('✅ Settings updated successfully');
+    logger.debug('Settings updated successfully');
 
     sendSuccess(res, 'Settings updated successfully', { user });
   } catch (error) {
-    console.error('❌ [USER] Update settings error:', (error as Error).message);
+    logger.error(`[USER] Update settings error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -98,18 +99,18 @@ export const updateUsername = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🏷️ [USER] PATCH /username');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 New username:', req.body.username);
+    logger.debug('[USER] PATCH /username');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`New username: ${req.body.username}`);
 
     const { username } = req.body;
     const user = await userService.updateUsername(req.userId!, username);
 
-    console.log('✅ Username updated to:', username);
+    logger.debug(`Username updated to: ${username}`);
 
     sendSuccess(res, 'Username updated successfully', { user });
   } catch (error) {
-    console.error('❌ [USER] Update username error:', (error as Error).message);
+    logger.error(`[USER] Update username error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -124,9 +125,9 @@ export const searchUsers = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🔍 [USER] GET /search');
-    console.log('👤 User ID:', req.userId);
-    console.log('📥 Query params:', req.query);
+    logger.debug('[USER] GET /search');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(req.query, 'Query params');
 
     const { q, page = '1', limit = '20' } = req.query;
     const { users, meta } = await userService.searchUsers(
@@ -136,11 +137,11 @@ export const searchUsers = async (
       parseInt(limit as string, 10)
     );
 
-    console.log('✅ Found', users.length, 'users for query:', q);
+    logger.debug(`Found ${users.length} users for query: ${q}`);
 
     sendSuccess(res, 'Users retrieved successfully', { users }, meta);
   } catch (error) {
-    console.error('❌ [USER] Search users error:', (error as Error).message);
+    logger.error(`[USER] Search users error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -155,18 +156,18 @@ export const getUserById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n👤 [USER] GET /:id');
-    console.log('👤 Requesting User ID:', req.userId);
-    console.log('🎯 Target User ID:', req.params.id);
+    logger.debug('[USER] GET /:id');
+    logger.debug(`Requesting User ID: ${req.userId}`);
+    logger.debug(`Target User ID: ${req.params.id}`);
 
     const { id } = req.params;
     const user = await userService.getPublicProfile(id, req.userId);
 
-    console.log('✅ User retrieved:', user?.email || 'Not found');
+    logger.debug(`User retrieved: ${user?.email || 'Not found'}`);
 
     sendSuccess(res, 'User retrieved successfully', { user });
   } catch (error) {
-    console.error('❌ [USER] Get user by ID error:', (error as Error).message);
+    logger.error(`[USER] Get user by ID error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -181,14 +182,14 @@ export const getUserByUsername = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n👤 [USER] GET /username/:username');
-    console.log('👤 Requesting User ID:', req.userId);
-    console.log('🎯 Target username:', req.params.username);
+    logger.debug('[USER] GET /username/:username');
+    logger.debug(`Requesting User ID: ${req.userId}`);
+    logger.debug(`Target username: ${req.params.username}`);
 
     const { username } = req.params;
     const user = await userService.getUserByUsername(username);
     if (!user) {
-      console.log('⚠️ User not found for username:', username);
+      logger.debug(`User not found for username: ${username}`);
       sendSuccess(res, 'User not found', { user: null });
       return;
     }
@@ -197,11 +198,11 @@ export const getUserByUsername = async (
       req.userId
     );
 
-    console.log('✅ User found:', publicProfile?.email);
+    logger.debug(`User found: ${publicProfile?.email}`);
 
     sendSuccess(res, 'User retrieved successfully', { user: publicProfile });
   } catch (error) {
-    console.error('❌ [USER] Get user by username error:', (error as Error).message);
+    logger.error(`[USER] Get user by username error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -216,18 +217,18 @@ export const addFcmToken = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📱 [USER] POST /fcm-token');
-    console.log('👤 User ID:', req.userId);
-    console.log('🔑 FCM Token:', req.body.fcmToken?.substring(0, 20) + '...');
+    logger.debug('[USER] POST /fcm-token');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`FCM Token: ${req.body.fcmToken?.substring(0, 20)}...`);
 
     const { fcmToken } = req.body;
     await userService.addFcmToken(req.userId!, fcmToken);
 
-    console.log('✅ FCM token added successfully');
+    logger.debug('FCM token added successfully');
 
     sendSuccess(res, 'FCM token added successfully');
   } catch (error) {
-    console.error('❌ [USER] Add FCM token error:', (error as Error).message);
+    logger.error(`[USER] Add FCM token error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -242,18 +243,18 @@ export const removeFcmToken = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n📱🗑️ [USER] DELETE /fcm-token');
-    console.log('👤 User ID:', req.userId);
-    console.log('🔑 FCM Token:', req.body.fcmToken?.substring(0, 20) + '...');
+    logger.debug('[USER] DELETE /fcm-token');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`FCM Token: ${req.body.fcmToken?.substring(0, 20)}...`);
 
     const { fcmToken } = req.body;
     await userService.removeFcmToken(req.userId!, fcmToken);
 
-    console.log('✅ FCM token removed successfully');
+    logger.debug('FCM token removed successfully');
 
     sendSuccess(res, 'FCM token removed successfully');
   } catch (error) {
-    console.error('❌ [USER] Remove FCM token error:', (error as Error).message);
+    logger.error(`[USER] Remove FCM token error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -268,20 +269,20 @@ export const getOnlineStatus = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🟢 [USER] POST /online-status');
-    console.log('👤 User ID:', req.userId);
-    console.log('🎯 Checking status for', req.body.userIds?.length, 'users');
+    logger.debug('[USER] POST /online-status');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug(`Checking status for ${req.body.userIds?.length} users`);
 
     const { userIds } = req.body;
     const statuses = await userService.getOnlineStatuses(userIds);
 
-    console.log('✅ Online statuses retrieved');
+    logger.debug('Online statuses retrieved');
 
     sendSuccess(res, 'Online statuses retrieved successfully', {
       statuses: Object.fromEntries(statuses),
     });
   } catch (error) {
-    console.error('❌ [USER] Get online status error:', (error as Error).message);
+    logger.error(`[USER] Get online status error: ${(error as Error).message}`);
     next(error);
   }
 };
@@ -296,13 +297,13 @@ export const deleteAccount = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('\n🗑️⚠️ [USER] DELETE /account');
-    console.log('👤 User ID:', req.userId);
-    console.log('⚠️ Account deletion requested');
+    logger.debug('[USER] DELETE /account');
+    logger.debug(`User ID: ${req.userId}`);
+    logger.debug('Account deletion requested');
 
     await userService.deleteAccount(req.userId!);
     
-    console.log('✅ Account deleted successfully');
+    logger.debug('Account deleted successfully');
 
     // Clear cookies
     res.clearCookie('accessToken');
@@ -310,7 +311,7 @@ export const deleteAccount = async (
 
     sendSuccess(res, 'Account deleted successfully');
   } catch (error) {
-    console.error('❌ [USER] Delete account error:', (error as Error).message);
+    logger.error(`[USER] Delete account error: ${(error as Error).message}`);
     next(error);
   }
 };
