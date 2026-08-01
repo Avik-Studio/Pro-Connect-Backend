@@ -1,79 +1,67 @@
 // ===========================================
 // PROCONNECT - LOGGER UTILITY
-// Production-ready logging with Pino
+// Vercel-compatible Pino Logger
 // ===========================================
 
 import pino from 'pino';
 import { appConfig } from '../config';
-import path from 'path';
-import fs from 'fs';
 
-// Ensure logs directory exists
-const logsDir = path.resolve(appConfig.logging.filePath);
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
+// ===========================================
+// BASE LOGGER CONFIGURATION
+// ===========================================
 
-// Base logger configuration
 const baseConfig: pino.LoggerOptions = {
   level: appConfig.logging.level,
+
   timestamp: pino.stdTimeFunctions.isoTime,
+
   formatters: {
-    level: (label) => ({ level: label }),
+    level: (label) => ({
+      level: label,
+    }),
+
     bindings: (bindings) => ({
       pid: bindings.pid,
       hostname: bindings.hostname,
       node_version: process.version,
     }),
   },
+
   base: {
     env: appConfig.nodeEnv,
     service: 'proconnect-api',
   },
 };
 
-// Development transport with pretty printing
-const devTransport = {
-  target: 'pino-pretty',
-  options: {
-    colorize: true,
-    translateTime: 'SYS:standard',
-    ignore: 'pid,hostname',
-    singleLine: false,
-  },
-};
+// ===========================================
+// CREATE LOGGER
+// ===========================================
 
-// Production transport with file rotation
-const prodTransport = pino.transport({
-  targets: [
-    // Console output
-    {
-      target: 'pino/file',
-      options: { destination: 1 }, // stdout
-      level: appConfig.logging.level,
-    },
-    // Error log file
-    {
-      target: 'pino/file',
-      options: { destination: path.join(logsDir, 'error.log') },
-      level: 'error',
-    },
-    // Combined log file
-    {
-      target: 'pino/file',
-      options: { destination: path.join(logsDir, 'combined.log') },
-      level: appConfig.logging.level,
-    },
-  ],
-});
+let loggerInstance: pino.Logger;
 
-// Create logger instance
-export const logger = pino(
-  baseConfig,
-  appConfig.isDevelopment
-    ? pino.transport(devTransport)
-    : prodTransport
-);
+if (appConfig.isDevelopment) {
+  // Local development
+  // Pretty formatted console logs
+  loggerInstance = pino(
+    baseConfig,
+    pino.transport({
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+        singleLine: false,
+      },
+    })
+  );
+} else {
+  // Production / Vercel
+  // Log directly to stdout.
+  // Vercel automatically captures these logs.
+  loggerInstance = pino(baseConfig);
+}
+
+export const logger = loggerInstance;
 
 // ===========================================
 // SPECIALIZED LOGGERS
@@ -82,27 +70,37 @@ export const logger = pino(
 /**
  * HTTP Request Logger
  */
-export const httpLogger = logger.child({ module: 'http' });
+export const httpLogger = logger.child({
+  module: 'http',
+});
 
 /**
  * Socket.IO Logger
  */
-export const socketLogger = logger.child({ module: 'socket' });
+export const socketLogger = logger.child({
+  module: 'socket',
+});
 
 /**
  * Database Logger
  */
-export const dbLogger = logger.child({ module: 'database' });
+export const dbLogger = logger.child({
+  module: 'database',
+});
 
 /**
  * Auth Logger
  */
-export const authLogger = logger.child({ module: 'auth' });
+export const authLogger = logger.child({
+  module: 'auth',
+});
 
 /**
  * Call Logger
  */
-export const callLogger = logger.child({ module: 'call' });
+export const callLogger = logger.child({
+  module: 'call',
+});
 
 // ===========================================
 // LOGGER UTILITIES
@@ -119,14 +117,19 @@ export const logHttpRequest = (req: {
   duration?: number;
   statusCode?: number;
 }): void => {
-  httpLogger.info({
-    method: req.method,
-    url: req.url,
-    ip: req.ip,
-    userId: req.userId,
-    duration: req.duration ? `${req.duration}ms` : undefined,
-    statusCode: req.statusCode,
-  }, 'HTTP Request');
+  httpLogger.info(
+    {
+      method: req.method,
+      url: req.url,
+      ip: req.ip,
+      userId: req.userId,
+      duration: req.duration
+        ? `${req.duration}ms`
+        : undefined,
+      statusCode: req.statusCode,
+    },
+    'HTTP Request'
+  );
 };
 
 /**
@@ -139,41 +142,62 @@ export const logSocketEvent = (event: {
   data?: unknown;
   direction: 'incoming' | 'outgoing';
 }): void => {
-  socketLogger.debug({
-    event: event.eventName,
-    userId: event.userId,
-    socketId: event.socketId,
-    direction: event.direction,
-  }, `Socket ${event.direction} event`);
+  socketLogger.debug(
+    {
+      event: event.eventName,
+      userId: event.userId,
+      socketId: event.socketId,
+      direction: event.direction,
+    },
+    `Socket ${event.direction} event`
+  );
 };
 
 /**
  * Log authentication events
  */
 export const logAuthEvent = (event: {
-  action: 'login' | 'logout' | 'register' | 'token_refresh' | 'oauth' | 'password_reset';
+  action:
+    | 'login'
+    | 'logout'
+    | 'register'
+    | 'token_refresh'
+    | 'oauth'
+    | 'password_reset';
   userId?: string;
   email?: string;
   success: boolean;
   ip?: string;
   reason?: string;
 }): void => {
-  const logFn = event.success ? authLogger.info.bind(authLogger) : authLogger.warn.bind(authLogger);
-  logFn({
-    action: event.action,
-    userId: event.userId,
-    email: event.email,
-    success: event.success,
-    ip: event.ip,
-    reason: event.reason,
-  }, `Auth ${event.action}`);
+  const logFn = event.success
+    ? authLogger.info.bind(authLogger)
+    : authLogger.warn.bind(authLogger);
+
+  logFn(
+    {
+      action: event.action,
+      userId: event.userId,
+      email: event.email,
+      success: event.success,
+      ip: event.ip,
+      reason: event.reason,
+    },
+    `Auth ${event.action}`
+  );
 };
 
 /**
  * Log call events
  */
 export const logCallEvent = (event: {
-  action: 'initiated' | 'accepted' | 'rejected' | 'ended' | 'missed' | 'failed';
+  action:
+    | 'initiated'
+    | 'accepted'
+    | 'rejected'
+    | 'ended'
+    | 'missed'
+    | 'failed';
   callId: string;
   callerId: string;
   receiverId?: string;
@@ -181,29 +205,38 @@ export const logCallEvent = (event: {
   callType: 'audio' | 'video';
   duration?: number;
 }): void => {
-  callLogger.info({
-    action: event.action,
-    callId: event.callId,
-    callerId: event.callerId,
-    receiverId: event.receiverId,
-    groupId: event.groupId,
-    callType: event.callType,
-    duration: event.duration,
-  }, `Call ${event.action}`);
+  callLogger.info(
+    {
+      action: event.action,
+      callId: event.callId,
+      callerId: event.callerId,
+      receiverId: event.receiverId,
+      groupId: event.groupId,
+      callType: event.callType,
+      duration: event.duration,
+    },
+    `Call ${event.action}`
+  );
 };
 
 /**
  * Log error with stack trace
  */
-export const logError = (error: Error, context?: Record<string, unknown>): void => {
-  logger.error({
-    error: {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
+export const logError = (
+  error: Error,
+  context?: Record<string, unknown>
+): void => {
+  logger.error(
+    {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      },
+      ...context,
     },
-    ...context,
-  }, 'Error occurred');
+    'Error occurred'
+  );
 };
 
 export default logger;
