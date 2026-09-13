@@ -7,6 +7,7 @@
 import './types/express-types';
 
 import http from 'http';
+import mongoose from 'mongoose';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -143,7 +144,6 @@ logger.info(`Swagger API Documentation available at: http://localhost:${appConfi
 app.get('/ready', async (req: Request, res: Response) => {
   try {
     // Check database connection
-    const mongoose = await import('mongoose');
     const dbStatus = mongoose.connection.readyState === 1;
     
     // Check Redis connection
